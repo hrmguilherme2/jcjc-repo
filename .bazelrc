@@ -1,0 +1,24 @@
+# ----------------------------------------------
+# cache configuration
+# ----------------------------------------------
+common --repository_cache=bazel-cache/repo
+
+# ----------------------------------------------
+# java configuration
+# ----------------------------------------------
+
+build:java11 --java_language_version=11
+build:java11 --tool_java_language_version=11
+build:java11 --java_runtime_version=remotejdk_11
+build:java11 --tool_java_runtime_version=remotejdk_11
+build:java11 --java_toolchain=//tools/jdk:toolchain_java11_definition
+build:java11 --host_java_toolchain=//tools/jdk:toolchain_java11_definition
+
+build --config=java11
+
+coverage:combined --combined_report=lcov
+coverage:combined --coverage_report_generator="@bazel_tools//tools/test/CoverageOutputGenerator/java/com/google/devtools/coverageoutputgenerator:Main"
+coverage:combined --experimental_fetch_all_coverage_outputs
+coverage:combined --test_env=VERBOSE_COVERAGE=1
+
+build --experimental_strict_java_deps=off
