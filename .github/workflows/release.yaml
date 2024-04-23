@@ -1,0 +1,78 @@
+# Cut a release whenever a new tag is pushed to the repo.
+# You should use an annotated tag, like `git tag -a v1.2.3`
+# and put the release notes into the commit message for the tag.
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Set output
+        id: vars
+        run: echo "tag=${GITHUB_REF#refs/*/}" >> $GITHUB_OUTPUT
+
+      - name: Mount bazel action cache
+        uses: actions/cache@v3
+        if: always()
+        with:
+          path: "~/.cache/bazel"
+          key: bazel
+
+      - name: Mount bazel repo cache
+        uses: actions/cache@v3
+        if: always()
+        with:
+          path: "~/.cache/bazel-repo"
+          key: bazel-repo
+
+      - name: build jacocorunner
+        env:
+          # Bazelisk will download bazel to here
+          XDG_CACHE_HOME: ~/.cache/bazel-repo
+        run: >-
+          bazel
+          --bazelrc=.github/workflows/ci.bazelrc
+          --bazelrc=.bazelrc
+          build
+          //:release_notes.md
+
+      - name: Prepare release assets
+        env:
+          # Bazelisk will download bazel to here
+          RELEASE_VERSION: ${{ steps.vars.outputs.tag }}
+        run: >-
+          cp bazel-bin/java/com/google/testing/coverage/jacocorunner.zip .
+          &&
+          unzip jacocorunner.zip
+          &&
+          mv jacocorunner.jar ./jacocorunner.${{ env.RELEASE_VERSION }}.jar
+          &&
+          mv jacocorunner.zip ./jacocorunner.${{ env.RELEASE_VERSION }}.zip
+          &&
+          cp bazel-bin/java/com/google/devtools/coverageoutputgenerator/coverageoutputgenerator.zip .
+          &&
+          unzip coverageoutputgenerator.zip
+          &&
+          mv coverageoutputgenerator.jar ./coverageoutputgenerator.${{ env.RELEASE_VERSION }}.jar
+          &&
+          mv coverageoutputgenerator.zip ./coverageoutputgenerator.${{ env.RELEASE_VERSION }}.zip
+
+      - name: Release
+        env:
+          RELEASE_VERSION: ${{ steps.vars.outputs.tag }}
+        uses: softprops/action-gh-release@v1
+        with:
+          body_path: bazel-bin/release_notes.md
+          files: |
+            ./jacocorunner.${{ env.RELEASE_VERSION }}.jar
+            ./jacocorunner.${{ env.RELEASE_VERSION }}.zip
+            ./coverageoutputgenerator.${{ env.RELEASE_VERSION }}.jar
+            ./coverageoutputgenerator.${{ env.RELEASE_VERSION }}.zip

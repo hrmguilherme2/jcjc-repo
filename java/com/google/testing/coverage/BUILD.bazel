@@ -1,0 +1,127 @@
+java_binary(
+    name = "JacocoCoverage",
+    srcs = ["JacocoCoverageRunner.java"],
+    deps = [
+        ":JacocoCoverageLib",
+        ":bitfield",
+        ":features",
+        "@jacoco_maven//:com_google_guava_guava",
+        "@jacoco_maven//:org_jacoco_org_jacoco_agent",
+        "@jacoco_maven//:org_jacoco_org_jacoco_core",
+        "@jacoco_maven//:org_jacoco_org_jacoco_report",
+        "@org_jacoco_org_jacoco_agent_0_8_6_org_jacoco_agent_0_8_6_runtime_jar//jar",
+    ],
+)
+
+java_library(
+    name = "JacocoCoverageLib",
+    srcs = [
+        "BranchCoverageDetail.java",
+        "BranchDetailAnalyzer.java",
+        "BranchExp.java",
+        "ClassProbesMapper.java",
+        "CovExp.java",
+        "JacocoLCOVFormatter.java",
+        "MethodProbesMapper.java",
+        "ProbeExp.java",
+    ],
+    deps = [
+        ":bitfield",
+        "@jacoco_maven//:com_google_guava_guava",
+        "@jacoco_maven//:org_jacoco_org_jacoco_core",
+        "@jacoco_maven//:org_jacoco_org_jacoco_report",
+        "@jacoco_maven//:org_ow2_asm_asm",
+        "@jacoco_maven//:org_ow2_asm_asm_tree",
+    ],
+)
+
+java_library(
+    name = "bitfield",
+    srcs = [
+        "BitField.java",
+        "IllegalStringException.java",
+    ],
+)
+
+java_library(
+    name = "features",
+    srcs = ["JacocoCoverageFeatures.java"],
+    deps = ["@jacoco_maven//:com_google_guava_guava"],
+)
+
+java_test(
+    name = "features_test",
+    srcs = ["TestJacocoCoverageFeatures.java"],
+    test_class = "com.google.testing.coverage.TestJacocoCoverageFeatures",
+    deps = [":features"],
+)
+
+genrule(
+    name = "Jacoco_jarjar",
+    srcs = [
+        ":JacocoCoverage_deploy.jar",
+        ":JacocoCoverage.jarjar",
+    ],
+    outs = ["JacocoCoverage_jarjar_deploy.jar"],
+    cmd = "\n".join([
+        "JARJAR=\"$$(mktemp -t bazel.XXXXXXXX)\"",
+        "\"$(JAVA)\" -jar \"$(location //third_party/jarjar:jarjar_command_deploy.jar)\" process \"$(location :JacocoCoverage.jarjar)\" \"$(location :JacocoCoverage_deploy.jar)\" \"$${JARJAR}\"",
+        "\"$(location @bazel_tools//tools/jdk:singlejar)\" --normalize --sources \"$${JARJAR}\" --output \"$@\"",
+        "rm -fr \"$${JARJAR}\"",
+    ]),
+    tags = ["manual"],
+    toolchains = ["@bazel_tools//tools/jdk:current_host_java_runtime"],
+    tools = [
+        "//third_party/jarjar:jarjar_command_deploy.jar",
+        "@bazel_tools//tools/jdk:current_host_java_runtime",
+        "@bazel_tools//tools/jdk:singlejar",
+    ],
+)
+
+# coverage is a filegroup rule with the coverage runner packed up with all its
+# dependencies.
+filegroup(
+    name = "coverage",
+    srcs = ["//java/com/google/testing/coverage:Jacoco_jarjar"],
+    visibility = ["//visibility:public"],
+)
+
+genrule(
+    name = "zip",
+    srcs = ["//java/com/google/testing/coverage"],
+    outs = ["jacocorunner.zip"],
+    cmd = """
+cp $(location //java/com/google/testing/coverage) ./jacocorunner.jar
+$(location @bazel_tools//tools/zip:zipper) c $@ ./jacocorunner.jar
+""",
+    tools = ["@bazel_tools//tools/zip:zipper"],
+    visibility = ["//visibility:public"],
+)
+
+genrule(
+    name = "release_notes_md",
+    srcs = ["jacocorunner.zip"],
+    outs = ["release_notes.md"],
+    cmd = """
+$(location @bazel_tools//tools/build_defs/hash:sha256) $(location jacocorunner.zip) sha256.txt
+sha256=$$(cat sha256.txt)
+cat << EOF > $@
+
+> TODO: edit this release, download and attach the jacocorunner.zip file
+> to the release notes on github, update the download url, and remove this TODO placeholder.
+
+To use this release asset:
+
+~~~bazel
+http_archive(
+    name = "bazel_jacocorunner",
+    sha256 = "$$sha256",
+    urls = ["https://github.com/stackb/bazel-jacocorunner/files/XXXXXXXX/jacocorunner.XXXX.zip"],
+    build_file_content = 'filegroup(name = "jar", srcs = ["jacocorunner.jar"], visibility = ["//visibility:public"])',
+)
+~~~
+EOF
+""",
+    tools = ["@bazel_tools//tools/build_defs/hash:sha256"],
+    visibility = ["//visibility:public"],
+)
